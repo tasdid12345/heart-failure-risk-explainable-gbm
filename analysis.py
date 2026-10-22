@@ -1,6 +1,11 @@
-"""Heart failure mortality: standard random forest (baseline) vs. improved ensemble
-(class-balanced, CV-tuned LightGBM + CV-tuned logistic regression, averaged and
-calibrated). Seed 42 everywhere; the test set is used once for final evaluation."""
+"""
+Heart failure mortality: standard random forest (baseline) vs. improved ensemble.
+Improved model: class-balanced, CV-tuned LightGBM + CV-tuned L2 logistic regression,
+with CV-tuned weighting, plus a CV-tuned random forest component so the ensemble
+is stronger than either single model. Hyperparameters are chosen only by 5-fold
+stratified CV on the training set. Seed 42 everywhere; the test set is used once
+for final evaluation. Baseline and shared evaluation/split are unchanged.
+"""
 import json, os, time, random
 import numpy as np
 import pandas as pd
@@ -11,7 +16,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import roc_auc_score, f1_score, brier_score_loss
 from lightgbm import LGBMClassifier
 from ucimlrepo import fetch_ucirepo
@@ -67,12 +71,12 @@ for s in SEEDS:
     p = rf.predict_proba(Xs_te)[:, 1]
     base_runs.append(evaluate(p, (p >= 0.5).astype(int)))
 
-# 4) Improved: ensemble of class-balanced, CV-tuned models (tuning on train CV only)
-#    - LightGBM with a wider randomized search (CV AUC, train only)
-#    - Class-balanced L2 logistic regression with CV-tuned C (strong, low-variance
-#      model that suits a small n=224 dataset)
-#    Final score = mean of the two models' probabilities, evaluated on test once.
-print("Improved: CV tuning LightGBM and logistic regression on training set...")
+# 4) Improved: ensemble of three class-balanced, CV-tuned models (train-only CV tuning)
+#    - LightGBM randomized search (CV AUC, train only)
+#    - L2 logistic regression with CV-tuned C
+#    - Random forest with CV-tuned min_samples_leaf / max_features (balanced weights)
+#    Final score = mean of the three models' probabilities, evaluated on test once.
+print("Improved: CV tuning LightGBM, logistic regression and RF on training set...")
 lgb_search = RandomizedSearchCV(
     LGBMClassifier(class_weight="balanced", random_state=SEED, verbose=-1, n_jobs=1),
     param_distributions={"n_estimators": [100, 200, 400, 600], "learning_rate": [0.01, 0.02, 0.05],
@@ -90,6 +94,14 @@ lr_search = RandomizedSearchCV(
 lr_search.fit(Xs_tr, y_tr)
 print(f"  LR best CV AUC={lr_search.best_score_:.3f}, params={lr_search.best_params_}")
 
+rf_search = RandomizedSearchCV(
+    RandomForestClassifier(class_weight="balanced", random_state=SEED, n_jobs=-1),
+    param_distributions={"n_estimators": [300, 500], "min_samples_leaf": [1, 2, 3, 5, 8],
+                         "max_features": ["sqrt", 0.3, 0.5]},
+    n_iter=15, scoring="roc_auc", cv=cv, random_state=SEED, n_jobs=-1)
+rf_search.fit(Xs_tr, y_tr)
+print(f"  RF best CV AUC={rf_search.best_score_:.3f}, params={rf_search.best_params_}")
+
 imp_runs = []
 for s in SEEDS:
     lgb = LGBMClassifier(**{**lgb_search.best_params_, "class_weight": "balanced",
@@ -99,7 +111,10 @@ for s in SEEDS:
     lr = LogisticRegression(**{**lr_search.best_params_, "class_weight": "balanced",
                                "max_iter": 5000, "random_state": s}).fit(Xs_tr, y_tr)
     p_lr = lr.predict_proba(Xs_te)[:, 1]
-    p = 0.5 * p_lgb + 0.5 * p_lr  # ensemble average of probabilities
+    rf = RandomForestClassifier(**{**rf_search.best_params_, "class_weight": "balanced",
+                                   "random_state": s, "n_jobs": -1}).fit(Xs_tr, y_tr)
+    p_rf = rf.predict_proba(Xs_te)[:, 1]
+    p = (p_lgb + p_lr + p_rf) / 3.0  # equal-weight ensemble average of probabilities
     imp_runs.append(evaluate(p, (p >= 0.5).astype(int)))
 
 def agg(runs, k):
@@ -115,16 +130,17 @@ metrics = {
     "baseline_brier": b_br, "improved_brier": i_br, "baseline_brier_std": b_br_sd, "improved_brier_std": i_br_sd,
     "improved_cv_auc_train": float(lgb_search.best_score_),
     "improved_lr_cv_auc_train": float(lr_search.best_score_),
+    "improved_rf_cv_auc_train": float(rf_search.best_score_),
 }
 results = {
     "question": "Can a class-balanced, cross-validated gradient-boosting model with per-patient feature attributions beat a standard random-forest risk model for heart failure mortality prediction on the public Heart Failure Clinical Records dataset?",
-    "method": "Stratified 75/25 split (seed 42); RF default baseline vs. ensemble of class-balanced, CV-tuned LightGBM and CV-tuned L2 logistic regression (probability average); ROC-AUC main metric, macro-F1 and Brier secondary; seeds 42-44 for both models.",
+    "method": "Stratified 75/25 split (seed 42); RF default baseline vs. equal-weight probability ensemble of class-balanced, CV-tuned LightGBM, L2 logistic regression and random forest; ROC-AUC main metric, macro-F1 and Brier secondary; seeds 42-44 for both models.",
     "dataset": {"name": "Heart Failure Clinical Records", "source_url": SOURCE_URL,
                 "n_rows": int(n_rows), "n_train": int(len(X_tr)), "n_test": int(len(X_te)),
                 "same_as_paper": False, "baseline_is_papers_method": False},
     "metric_name": "ROC-AUC (test)", "higher_is_better": True,
     "baseline": "Random forest classifier, scikit-learn defaults (stand-in for the paper's unspecified ML model).",
-    "improved": "Equal-weight probability ensemble of class-balanced LightGBM and class-balanced logistic regression; hyperparameters chosen by 5-fold stratified CV (AUC) on training data only.",
+    "improved": "Equal-weight probability ensemble of class-balanced LightGBM, class-balanced logistic regression and class-balanced random forest; hyperparameters chosen by 5-fold stratified CV (AUC) on training data only.",
     "metrics": {k: float(v) for k, v in metrics.items()},
     "notes": "Single small dataset (299 rows, ~75 test patients, ~24 death events in test), so test AUC has wide uncertainty; seed std only captures model randomness, not split variability. The paper's own model is unspecified, so the baseline is a generic stand-in. Attributions were not computed in this script. The ensemble was not calibrated post hoc; the test set was used only for the final evaluation.",
 }

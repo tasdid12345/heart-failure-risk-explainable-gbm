@@ -1,4 +1,8 @@
-README is unchanged; the method changed only in the improved model (see results.json "improved" and "method" fields). The baseline, data loading, split and evaluation code are as before.
+Heart failure mortality: random forest baseline vs. an improved three-model ensemble.
+
+The improved model averages class-balanced LightGBM, L2 logistic regression and random forest. Each component's hyperparameters are chosen by 5-fold stratified CV (ROC-AUC) on the training split only. The test set is used once for the final evaluation. Baseline, split, seeds (42-44) and evaluation code are unchanged.
+
+Run: `pip install -r requirements.txt && python analysis.py`. Results are written to `results.json`, and a bar chart to `figures/auc_comparison.png`.
 
 ## Reference
 
