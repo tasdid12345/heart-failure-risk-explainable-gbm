@@ -1,0 +1,34 @@
+{
+  "question": "Can a class-balanced, cross-validated gradient-boosting model with per-patient feature attributions beat a standard random-forest risk model for heart failure mortality prediction on the public Heart Failure Clinical Records dataset?",
+  "method": "Stratified 75/25 split (seed 42); RF default baseline vs. class-balanced, CV-tuned, Platt-calibrated LightGBM; ROC-AUC main metric, macro-F1 and Brier secondary; seeds 42-44 for both models.",
+  "dataset": {
+    "name": "Heart Failure Clinical Records",
+    "source_url": "https://archive.ics.uci.edu/dataset/519/heart+failure+clinical+records",
+    "n_rows": 299,
+    "n_train": 224,
+    "n_test": 75,
+    "same_as_paper": false,
+    "baseline_is_papers_method": false
+  },
+  "metric_name": "ROC-AUC (test)",
+  "higher_is_better": true,
+  "baseline": "Random forest classifier, scikit-learn defaults (stand-in for the paper's unspecified ML model).",
+  "improved": "LightGBM with balanced class weights, hyperparameters chosen by 5-fold stratified CV (AUC) on training data only, and sigmoid probability calibration via CV.",
+  "metrics": {
+    "baseline_score": 0.8852124183006534,
+    "improved_score": 0.8562091503267975,
+    "improvement": -0.029003267973855995,
+    "baseline_score_std": 0.007800754677234504,
+    "improved_score_std": 0.00176490759760562,
+    "baseline_f1": 0.8025719912512366,
+    "improved_f1": 0.8295454545454546,
+    "baseline_f1_std": 0.006308239319578298,
+    "improved_f1_std": 0.0,
+    "baseline_brier": 0.12352800000000001,
+    "improved_brier": 0.11930536918090773,
+    "baseline_brier_std": 0.0037603801226294632,
+    "improved_brier_std": 0.00013556959993563894,
+    "improved_cv_auc_train": 0.9256548899129544
+  },
+  "notes": "Single small dataset (299 rows, ~96 test patients, ~32 death events in test), so test AUC has wide uncertainty; seed std only captures model randomness, not split variability. The paper's own model is unspecified, so the baseline is a generic stand-in. Attributions were not computed in this script."
+}
