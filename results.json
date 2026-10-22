@@ -1,0 +1,35 @@
+{
+  "question": "Can a class-balanced, cross-validated gradient-boosting model with per-patient feature attributions beat a standard random-forest risk model for heart failure mortality prediction on the public Heart Failure Clinical Records dataset?",
+  "method": "Stratified 75/25 split (seed 42); RF default baseline vs. ensemble of class-balanced, CV-tuned LightGBM and CV-tuned L2 logistic regression (probability average); ROC-AUC main metric, macro-F1 and Brier secondary; seeds 42-44 for both models.",
+  "dataset": {
+    "name": "Heart Failure Clinical Records",
+    "source_url": "https://archive.ics.uci.edu/dataset/519/heart+failure+clinical+records",
+    "n_rows": 299,
+    "n_train": 224,
+    "n_test": 75,
+    "same_as_paper": false,
+    "baseline_is_papers_method": false
+  },
+  "metric_name": "ROC-AUC (test)",
+  "higher_is_better": true,
+  "baseline": "Random forest classifier, scikit-learn defaults (stand-in for the paper's unspecified ML model).",
+  "improved": "Equal-weight probability ensemble of class-balanced LightGBM and class-balanced logistic regression; hyperparameters chosen by 5-fold stratified CV (AUC) on training data only.",
+  "metrics": {
+    "baseline_score": 0.8852124183006534,
+    "improved_score": 0.8883442265795206,
+    "improvement": 0.0031318082788671653,
+    "baseline_score_std": 0.007800754677234504,
+    "improved_score_std": 0.001925672062054861,
+    "baseline_f1": 0.8025719912512366,
+    "improved_f1": 0.8253968253968255,
+    "baseline_f1_std": 0.006308239319578298,
+    "improved_f1_std": 1.1102230246251565e-16,
+    "baseline_brier": 0.12352800000000001,
+    "improved_brier": 0.12217126845171189,
+    "baseline_brier_std": 0.0037603801226294632,
+    "improved_brier_std": 0.000341718114705213,
+    "improved_cv_auc_train": 0.9265130568356374,
+    "improved_lr_cv_auc_train": 0.8746041986687147
+  },
+  "notes": "Single small dataset (299 rows, ~75 test patients, ~24 death events in test), so test AUC has wide uncertainty; seed std only captures model randomness, not split variability. The paper's own model is unspecified, so the baseline is a generic stand-in. Attributions were not computed in this script. The ensemble was not calibrated post hoc; the test set was used only for the final evaluation."
+}
